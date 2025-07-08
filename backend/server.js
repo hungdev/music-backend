@@ -21,6 +21,21 @@ if (!fsSync.existsSync(UPLOAD_DIR)) {
   fsSync.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+// Serve static files từ thư mục uploads
+app.use(
+  "/uploads",
+  express.static(UPLOAD_DIR, {
+    setHeaders: (res, path) => {
+      // Set proper headers cho audio files
+      res.set({
+        "Content-Type": "audio/mpeg",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+      });
+    },
+  })
+);
+
 // Cấu hình multer cho upload file
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -64,14 +79,29 @@ const upload = multer({
   },
 });
 
+// Hàm tạo URLs cho file
+function generateFileUrls(filename, baseUrl = `http://localhost:${PORT}`) {
+  const encodedId = Buffer.from(filename).toString("base64");
+  return {
+    streamUrl: `${baseUrl}/api/stream/${encodedId}`,
+    directUrl: `${baseUrl}/uploads/${encodeURIComponent(filename)}`,
+    downloadUrl: `${baseUrl}/api/download/${encodedId}`,
+  };
+}
+
 // Hàm đọc metadata của file nhạc
-async function extractMetadata(filePath) {
+async function extractMetadata(filePath, req = null) {
   try {
     const metadata = await mm.parseFile(filePath);
     const stats = await fs.stat(filePath);
+    const filename = path.basename(filePath);
+
+    // Tạo base URL từ request hoặc dùng default
+    const baseUrl = req ? `${req.protocol}://${req.get("host")}` : `http://localhost:${PORT}`;
+    const urls = generateFileUrls(filename, baseUrl);
 
     return {
-      filename: path.basename(filePath),
+      filename: filename,
       title: metadata.common.title || path.basename(filePath, path.extname(filePath)),
       artist: metadata.common.artist || "Unknown Artist",
       album: metadata.common.album || "Unknown Album",
@@ -81,13 +111,21 @@ async function extractMetadata(filePath) {
       fileSize: stats.size,
       filePath: filePath,
       uploadDate: stats.birthtime || stats.ctime,
+      // Thêm các URLs
+      streamUrl: urls.streamUrl,
+      directUrl: urls.directUrl,
+      downloadUrl: urls.downloadUrl,
     };
   } catch (error) {
     console.error(`Lỗi đọc metadata cho ${filePath}:`, error.message);
     const stats = await fs.stat(filePath);
+    const filename = path.basename(filePath);
+
+    const baseUrl = req ? `${req.protocol}://${req.get("host")}` : `http://localhost:${PORT}`;
+    const urls = generateFileUrls(filename, baseUrl);
 
     return {
-      filename: path.basename(filePath),
+      filename: filename,
       title: path.basename(filePath, path.extname(filePath)),
       artist: "Unknown Artist",
       album: "Unknown Album",
@@ -98,6 +136,10 @@ async function extractMetadata(filePath) {
       filePath: filePath,
       uploadDate: stats.birthtime || stats.ctime,
       error: "Không thể đọc metadata",
+      // Thêm các URLs
+      streamUrl: urls.streamUrl,
+      directUrl: urls.directUrl,
+      downloadUrl: urls.downloadUrl,
     };
   }
 }
@@ -117,7 +159,7 @@ app.post("/api/upload", upload.array("music", 20), async (req, res) => {
     // Xử lý từng file
     for (const file of req.files) {
       try {
-        const metadata = await extractMetadata(file.path);
+        const metadata = await extractMetadata(file.path, req);
         uploadedFiles.push({
           originalName: file.originalname,
           filename: file.filename,
@@ -162,7 +204,7 @@ app.post("/api/scan", async (req, res) => {
     for (const file of musicFiles) {
       const filePath = path.join(UPLOAD_DIR, file);
       try {
-        const metadata = await extractMetadata(filePath);
+        const metadata = await extractMetadata(filePath, req);
         musicList.push({
           id: Buffer.from(file).toString("base64"), // Tạo ID unique
           ...metadata,
@@ -219,6 +261,20 @@ app.get("/api/music", async (req, res) => {
     const data = await fs.readFile(MUSIC_LIST_FILE, "utf8");
     const musicData = JSON.parse(data);
 
+    // Update URLs với current request
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    if (musicData.files) {
+      musicData.files = musicData.files.map((file) => {
+        const urls = generateFileUrls(file.filename, baseUrl);
+        return {
+          ...file,
+          streamUrl: urls.streamUrl,
+          directUrl: urls.directUrl,
+          downloadUrl: urls.downloadUrl,
+        };
+      });
+    }
+
     res.json(musicData);
   } catch (error) {
     console.error("Lỗi đọc danh sách nhạc:", error);
@@ -248,7 +304,7 @@ app.delete("/api/music/:id", async (req, res) => {
   }
 });
 
-// 5. API stream nhạc
+// 5. API stream nhạc (giữ nguyên cho backward compatibility)
 app.get("/api/stream/:id", (req, res) => {
   try {
     const { id } = req.params;
@@ -291,6 +347,56 @@ app.get("/api/stream/:id", (req, res) => {
   }
 });
 
+// 6. API download file (force download)
+app.get("/api/download/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    const filename = Buffer.from(id, "base64").toString();
+    const filePath = path.join(UPLOAD_DIR, filename);
+
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).json({ error: "File không tồn tại" });
+    }
+
+    const stat = fsSync.statSync(filePath);
+
+    // Set headers để force download
+    res.set({
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+      "Content-Length": stat.size,
+    });
+
+    fsSync.createReadStream(filePath).pipe(res);
+  } catch (error) {
+    console.error("Lỗi download file:", error);
+    res.status(500).json({ error: "Lỗi khi download file" });
+  }
+});
+
+// 7. API lấy thông tin một file cụ thể
+app.get("/api/music/info/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const filename = Buffer.from(id, "base64").toString();
+    const filePath = path.join(UPLOAD_DIR, filename);
+
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).json({ error: "File không tồn tại" });
+    }
+
+    const metadata = await extractMetadata(filePath, req);
+
+    res.json({
+      id: id,
+      ...metadata,
+    });
+  } catch (error) {
+    console.error("Lỗi lấy thông tin file:", error);
+    res.status(500).json({ error: "Lỗi khi lấy thông tin file" });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
@@ -304,6 +410,7 @@ app.use((error, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server đang chạy tại http://localhost:${PORT}`);
   console.log(`Thư mục upload: ${UPLOAD_DIR}`);
+  console.log(`Static files served at: http://localhost:${PORT}/uploads/`);
 });
 
 module.exports = app;
