@@ -5,6 +5,7 @@ const fs = require("fs").promises;
 const fsSync = require("fs");
 const cors = require("cors");
 const mm = require("music-metadata");
+const crypto = require("crypto");
 const { normalizeFilename } = require("./utils");
 
 const app = express();
@@ -14,12 +15,17 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
-// Tạo thư mục uploads nếu chưa tồn tại
+// Tạo thư mục uploads và covers nếu chưa tồn tại
 const UPLOAD_DIR = path.join(__dirname, "uploads");
+const COVERS_DIR = path.join(__dirname, "uploads", "covers");
 const MUSIC_LIST_FILE = path.join(__dirname, "music-list.json");
 
 if (!fsSync.existsSync(UPLOAD_DIR)) {
   fsSync.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+if (!fsSync.existsSync(COVERS_DIR)) {
+  fsSync.mkdirSync(COVERS_DIR, { recursive: true });
 }
 
 // Serve static files từ thư mục uploads
@@ -28,11 +34,20 @@ app.use(
   express.static(UPLOAD_DIR, {
     setHeaders: (res, path) => {
       // Set proper headers cho audio files
-      res.set({
-        "Content-Type": "audio/mpeg",
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=3600",
-      });
+      if (path.match(/\.(mp3|wav|flac|aac|ogg|webm|m4a)$/i)) {
+        res.set({
+          "Content-Type": "audio/mpeg",
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "public, max-age=3600",
+        });
+      }
+      // Set proper headers cho image files
+      else if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        res.set({
+          "Content-Type": "image/*",
+          "Cache-Control": "public, max-age=86400", // Cache ảnh lâu hơn
+        });
+      }
     },
   })
 );
@@ -99,6 +114,48 @@ function generateFileUrls(filename, baseUrl = `http://localhost:${PORT}`) {
   };
 }
 
+// Hàm extract và lưu album art
+async function extractAndSaveAlbumArt(filePath, filename) {
+  try {
+    const metadata = await mm.parseFile(filePath);
+
+    if (metadata.common.picture && metadata.common.picture.length > 0) {
+      const picture = metadata.common.picture[0];
+
+      // Tạo hash của filename để tạo tên file ảnh unique
+      const hash = crypto.createHash("md5").update(filename).digest("hex");
+
+      // Xác định extension từ mime type
+      let extension = ".jpg"; // default
+      if (picture.format.includes("png")) extension = ".png";
+      else if (picture.format.includes("gif")) extension = ".gif";
+      else if (picture.format.includes("webp")) extension = ".webp";
+
+      const coverFilename = `${hash}${extension}`;
+      const coverPath = path.join(COVERS_DIR, coverFilename);
+
+      // Kiểm tra xem file ảnh đã tồn tại chưa
+      if (!fsSync.existsSync(coverPath)) {
+        await fs.writeFile(coverPath, picture.data);
+        console.log(`Đã lưu album art: ${coverFilename}`);
+      }
+
+      return coverFilename;
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Lỗi extract album art cho ${filename}:`, error.message);
+    return null;
+  }
+}
+
+// Hàm tạo URL cho album art
+function generateCoverUrl(coverFilename, baseUrl = `http://localhost:${PORT}`) {
+  if (!coverFilename) return null;
+  return `${baseUrl}/uploads/covers/${encodeURIComponent(coverFilename)}`;
+}
+
 // Hàm đọc metadata của file nhạc
 async function extractMetadata(filePath, req = null) {
   try {
@@ -109,6 +166,10 @@ async function extractMetadata(filePath, req = null) {
     // Tạo base URL từ request hoặc dùng default
     const baseUrl = req ? `${req.protocol}://${req.get("host")}` : `http://localhost:${PORT}`;
     const urls = generateFileUrls(filename, baseUrl);
+
+    // Extract và lưu album art
+    const coverFilename = await extractAndSaveAlbumArt(filePath, filename);
+    const coverUrl = generateCoverUrl(coverFilename, baseUrl);
 
     return {
       filename: filename,
@@ -125,6 +186,14 @@ async function extractMetadata(filePath, req = null) {
       streamUrl: urls.streamUrl,
       directUrl: urls.directUrl,
       downloadUrl: urls.downloadUrl,
+      // Thêm URL ảnh bìa
+      coverUrl: coverUrl,
+      coverFilename: coverFilename,
+      // Thêm thông tin bổ sung từ metadata
+      year: metadata.common.year || null,
+      genre: metadata.common.genre ? metadata.common.genre.join(", ") : null,
+      track: metadata.common.track ? metadata.common.track.no : null,
+      albumartist: metadata.common.albumartist || null,
     };
   } catch (error) {
     console.error(`Lỗi đọc metadata cho ${filePath}:`, error.message);
@@ -150,6 +219,13 @@ async function extractMetadata(filePath, req = null) {
       streamUrl: urls.streamUrl,
       directUrl: urls.directUrl,
       downloadUrl: urls.downloadUrl,
+      // Không có ảnh bìa
+      coverUrl: null,
+      coverFilename: null,
+      year: null,
+      genre: null,
+      track: null,
+      albumartist: null,
     };
   }
 }
@@ -276,11 +352,13 @@ app.get("/api/music", async (req, res) => {
     if (musicData.files) {
       musicData.files = musicData.files.map((file) => {
         const urls = generateFileUrls(file.filename, baseUrl);
+        const coverUrl = generateCoverUrl(file.coverFilename, baseUrl);
         return {
           ...file,
           streamUrl: urls.streamUrl,
           directUrl: urls.directUrl,
           downloadUrl: urls.downloadUrl,
+          coverUrl: coverUrl,
         };
       });
     }
@@ -304,7 +382,25 @@ app.delete("/api/music/:id", async (req, res) => {
       return res.status(404).json({ error: "File không tồn tại" });
     }
 
-    // Xóa file
+    // Xóa album art nếu có
+    try {
+      const hash = crypto.createHash("md5").update(filename).digest("hex");
+      const possibleExtensions = [".jpg", ".png", ".gif", ".webp"];
+
+      for (const ext of possibleExtensions) {
+        const coverPath = path.join(COVERS_DIR, `${hash}${ext}`);
+        if (fsSync.existsSync(coverPath)) {
+          await fs.unlink(coverPath);
+          console.log(`Đã xóa album art: ${hash}${ext}`);
+          break;
+        }
+      }
+    } catch (coverError) {
+      console.error("Lỗi xóa album art:", coverError);
+      // Không throw error vì việc xóa album art không quan trọng bằng việc xóa file nhạc
+    }
+
+    // Xóa file nhạc
     await fs.unlink(filePath);
 
     res.json({ message: "Xóa file thành công" });
@@ -420,7 +516,9 @@ app.use((error, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server đang chạy tại http://localhost:${PORT}`);
   console.log(`Thư mục upload: ${UPLOAD_DIR}`);
+  console.log(`Thư mục covers: ${COVERS_DIR}`);
   console.log(`Static files served at: http://localhost:${PORT}/uploads/`);
+  console.log(`Cover images served at: http://localhost:${PORT}/uploads/covers/`);
 });
 
 module.exports = app;

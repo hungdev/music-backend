@@ -17,6 +17,8 @@ import {
   Col,
   Statistic,
   Input,
+  Image,
+  Avatar,
 } from "antd";
 import {
   InboxOutlined,
@@ -28,6 +30,8 @@ import {
   SoundOutlined,
   CloudUploadOutlined,
   SearchOutlined,
+  UserOutlined,
+  PictureOutlined,
 } from "@ant-design/icons";
 import { removeVNTones } from "./utils";
 
@@ -322,6 +326,34 @@ function MusicManager() {
 
   const columns = [
     {
+      title: "Ảnh bìa",
+      key: "cover",
+      width: 80,
+      render: (_, record) => (
+        <div className="flex justify-center">
+          {record.coverUrl ? (
+            <Image
+              width={50}
+              height={50}
+              src={record.coverUrl}
+              alt={`${record.title} - ${record.artist}`}
+              className="rounded-lg object-cover"
+              fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+              preview={{
+                mask: <PictureOutlined />,
+              }}
+            />
+          ) : (
+            <Avatar
+              size={50}
+              icon={<SoundOutlined />}
+              className="flex items-center justify-center bg-gray-200"
+            />
+          )}
+        </div>
+      ),
+    },
+    {
       title: "Phát",
       key: "play",
       width: 60,
@@ -349,6 +381,7 @@ function MusicManager() {
         <div>
           <div className="font-medium text-gray-900">{text}</div>
           <div className="text-sm text-gray-500">{record.filename}</div>
+          {record.year && <div className="text-xs text-gray-400">Năm: {record.year}</div>}
         </div>
       ),
     },
@@ -357,12 +390,38 @@ function MusicManager() {
       dataIndex: "artist",
       key: "artist",
       ellipsis: true,
+      render: (text, record) => (
+        <div>
+          <div>{text}</div>
+          {record.albumartist && record.albumartist !== text && (
+            <div className="text-xs text-gray-500">Album: {record.albumartist}</div>
+          )}
+        </div>
+      ),
     },
     {
       title: "Album",
       dataIndex: "album",
       key: "album",
       ellipsis: true,
+      render: (text, record) => (
+        <div>
+          <div>{text}</div>
+          {record.track && <div className="text-xs text-gray-500">Track: {record.track}</div>}
+        </div>
+      ),
+    },
+    {
+      title: "Thể loại",
+      dataIndex: "genre",
+      key: "genre",
+      ellipsis: true,
+      render: (genre) =>
+        genre ? (
+          <Tag color="green" className="text-xs">
+            {genre.split(",")[0].trim()} {/* Hiển thị thể loại đầu tiên */}
+          </Tag>
+        ) : null,
     },
     {
       title: "Thời lượng",
@@ -479,7 +538,7 @@ function MusicManager() {
             Quản lý Nhạc
           </Title>
           <Text type="secondary" className="block text-center">
-            Upload và quản lý file nhạc của bạn
+            Upload và quản lý file nhạc với ảnh bìa album
           </Text>
         </div>
 
@@ -550,7 +609,7 @@ function MusicManager() {
             <p className="ant-upload-text">Kéo thả nhiều file vào đây hoặc click để chọn file</p>
             <p className="ant-upload-hint">
               Hỗ trợ upload nhiều file cùng lúc. Các định dạng: MP3, WAV, FLAC, AAC, OGG, WebM, M4A
-              (tối đa 100MB/file)
+              (tối đa 100MB/file). Ảnh bìa album sẽ được tự động extract.
             </p>
           </Dragger>
 
@@ -614,16 +673,40 @@ function MusicManager() {
         {currentPlaying && (
           <Card className="mb-6" title="Đang phát">
             <div className="flex items-center space-x-4">
+              {/* Album Art */}
+              <div className="flex-shrink-0">
+                {currentPlaying.coverUrl ? (
+                  <Image
+                    width={80}
+                    height={80}
+                    src={currentPlaying.coverUrl}
+                    alt={`${currentPlaying.title} - ${currentPlaying.artist}`}
+                    className="rounded-lg object-cover"
+                    fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                  />
+                ) : (
+                  <Avatar
+                    size={80}
+                    icon={<SoundOutlined />}
+                    className="flex items-center justify-center bg-gray-200"
+                  />
+                )}
+              </div>
+
+              {/* Controls */}
               <Button
                 type="text"
                 size="large"
                 icon={isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                 onClick={() => handlePlay(currentPlaying)}
-                className="text-2xl"
+                className="text-3xl flex-shrink-0"
               />
-              <div className="flex-1">
-                <div className="font-medium">{currentPlaying.title}</div>
-                <div className="text-sm text-gray-500">{currentPlaying.artist}</div>
+
+              {/* Info & Progress */}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-lg truncate">{currentPlaying.title}</div>
+                <div className="text-sm text-gray-600 truncate">{currentPlaying.artist}</div>
+                <div className="text-xs text-gray-500 truncate">{currentPlaying.album}</div>
                 <Progress
                   percent={duration ? (progress / duration) * 100 : 0}
                   showInfo={false}
@@ -672,7 +755,7 @@ function MusicManager() {
               showTotal: (total, range) => `${range[0]}-${range[1]} trong ${total} bài hát`,
               pageSizeOptions: ["10", "15", "25", "50"],
             }}
-            scroll={{ x: 800 }}
+            scroll={{ x: 1000 }}
             locale={{
               emptyText: (
                 <div className="text-center py-8">
