@@ -1,4 +1,4 @@
-export function removeVNTones(str) {
+function removeVNTones(str) {
   str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
   str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
   str = str.replace(/ì|í|ị|ỉ|ĩ/g, "i");
@@ -21,8 +21,37 @@ export function removeVNTones(str) {
   // Bỏ các khoảng trắng liền nhau
   str = str.replace(/ + /g, " ");
   str = str.trim();
-  // Remove punctuations
-  // Bỏ dấu câu, kí tự đặc biệt
-  // str = str.replace(/!|@|%|\^|\*|\(|\)|\+|\=|\<|\>|\?|\/|,|\.|\:|\;|\'|\"|\&|\#|\[|\]|~|\$|_|`|-|{|}|\||\\/g, " ");
+
+  // Replace spaces with hyphens and clean up special characters
+  // Thay khoảng trắng bằng dấu gạch ngang và loại bỏ ký tự đặc biệt
+  str = str.replace(/\s+/g, "-"); // Thay thế khoảng trắng bằng dấu gạch ngang
+  str = str.replace(/[^\w\-\.]/g, ""); // Giữ lại chỉ word characters, dấu gạch ngang và dấu chấm
+  str = str.replace(/-+/g, "-"); // Thay thế nhiều dấu gạch ngang liên tiếp bằng một dấu
+  str = str.replace(/^-+|-+$/g, ""); // Loại bỏ dấu gạch ngang ở đầu và cuối
+
   return str;
 }
+
+// Hàm chuẩn hóa tên file
+function normalizeFilename(filename) {
+  // Tách tên file và extension
+  const lastDotIndex = filename.lastIndexOf(".");
+  let name = filename;
+  let extension = "";
+
+  if (lastDotIndex > 0) {
+    name = filename.substring(0, lastDotIndex);
+    extension = filename.substring(lastDotIndex);
+  }
+
+  // Chuẩn hóa tên (không bao gồm extension)
+  const normalizedName = removeVNTones(name);
+
+  // Trả về tên file đã chuẩn hóa
+  return normalizedName + extension;
+}
+
+module.exports = {
+  removeVNTones,
+  normalizeFilename,
+};

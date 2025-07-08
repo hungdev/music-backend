@@ -5,6 +5,7 @@ const fs = require("fs").promises;
 const fsSync = require("fs");
 const cors = require("cors");
 const mm = require("music-metadata");
+const { normalizeFilename } = require("./utils");
 
 const app = express();
 const PORT = 3001;
@@ -42,10 +43,19 @@ const storage = multer.diskStorage({
     cb(null, UPLOAD_DIR);
   },
   filename: function (req, file, cb) {
-    // Giữ tên file gốc với timestamp để tránh trùng lặp
-    const timestamp = Date.now();
+    // Decode tên file từ latin1 sang utf8
     const originalName = Buffer.from(file.originalname, "latin1").toString("utf8");
-    cb(null, `${timestamp}-${originalName}`);
+
+    // Chuẩn hóa tên file (loại bỏ dấu, thay space bằng -)
+    const normalizedName = normalizeFilename(originalName);
+
+    // Thêm timestamp để tránh trùng lặp
+    const timestamp = Date.now();
+    const finalName = `${timestamp}-${normalizedName}`;
+
+    console.log(`Original: ${originalName} -> Normalized: ${finalName}`);
+
+    cb(null, finalName);
   },
 });
 
