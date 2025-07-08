@@ -16,6 +16,7 @@ import {
   Row,
   Col,
   Statistic,
+  Input,
 } from "antd";
 import {
   InboxOutlined,
@@ -26,10 +27,13 @@ import {
   ReloadOutlined,
   SoundOutlined,
   CloudUploadOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
+import { removeVNTones } from "./utils";
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
+const { Search } = Input;
 
 const API_BASE = "http://localhost:3001/api";
 
@@ -58,6 +62,8 @@ api.interceptors.response.use(
 
 function MusicManager() {
   const [musicList, setMusicList] = useState([]);
+  const [filteredMusicList, setFilteredMusicList] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -94,6 +100,47 @@ function MusicManager() {
       setLoading(false);
     }
   };
+
+  // Hàm search/filter nhạc (hỗ trợ cả có dấu và không dấu)
+  const handleSearch = (value) => {
+    setSearchTerm(value);
+    if (!value.trim()) {
+      setFilteredMusicList(musicList);
+      return;
+    }
+
+    const searchLower = value.toLowerCase().trim();
+    const searchNormalized = removeVNTones(searchLower);
+
+    const filtered = musicList.filter((music) => {
+      // So sánh trực tiếp (có dấu)
+      const directMatch =
+        music.title?.toLowerCase().includes(searchLower) ||
+        music.artist?.toLowerCase().includes(searchLower) ||
+        music.album?.toLowerCase().includes(searchLower) ||
+        music.filename?.toLowerCase().includes(searchLower);
+
+      // So sánh sau khi normalize (không dấu)
+      const normalizedMatch =
+        removeVNTones(music.title?.toLowerCase() || "").includes(searchNormalized) ||
+        removeVNTones(music.artist?.toLowerCase() || "").includes(searchNormalized) ||
+        removeVNTones(music.album?.toLowerCase() || "").includes(searchNormalized) ||
+        removeVNTones(music.filename?.toLowerCase() || "").includes(searchNormalized);
+
+      return directMatch || normalizedMatch;
+    });
+
+    setFilteredMusicList(filtered);
+  };
+
+  // Cập nhật filteredMusicList khi musicList thay đổi
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      handleSearch(searchTerm);
+    } else {
+      setFilteredMusicList(musicList);
+    }
+  }, [musicList, searchTerm]);
 
   // Scan thư mục
   const handleScan = async () => {
@@ -435,28 +482,51 @@ function MusicManager() {
           </Text>
         </div>
 
-        {/* Stats */}
-        <Row gutter={16} className="mb-6">
-          <Col span={8}>
-            <Card>
-              <Statistic title="Tổng số bài hát" value={totalFiles} prefix={<SoundOutlined />} />
-            </Card>
-          </Col>
-          <Col span={8}>
+        {/* Stats - Cân đối hơn */}
+        <Row gutter={[16, 16]} className="mb-6">
+          <Col xs={24} sm={8}>
             <Card>
               <Statistic
-                title="Lần scan cuối"
-                value={lastScan ? new Date(lastScan).toLocaleString("vi-VN") : "Chưa scan"}
-                valueStyle={{ fontSize: "16px" }}
+                title="Tổng số bài hát"
+                value={totalFiles}
+                prefix={<SoundOutlined />}
+                valueStyle={{ fontSize: "24px", fontWeight: "bold" }}
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={8}>
+            <Card>
+              <Statistic
+                title="Lần scan cuối"
+                value={lastScan ? new Date(lastScan).toLocaleDateString("vi-VN") : "Chưa scan"}
+                formatter={(value) => (
+                  <div style={{ fontSize: "16px" }}>
+                    {value}
+                    {lastScan && (
+                      <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
+                        {new Date(lastScan).toLocaleTimeString("vi-VN")}
+                      </div>
+                    )}
+                  </div>
+                )}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
             <Card>
               <Statistic
                 title="Đang phát"
                 value={currentPlaying?.title || "Không có"}
-                valueStyle={{ fontSize: "16px" }}
+                formatter={(value) => (
+                  <div style={{ fontSize: "16px" }}>
+                    {value}
+                    {currentPlaying && (
+                      <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
+                        {currentPlaying.artist}
+                      </div>
+                    )}
+                  </div>
+                )}
               />
             </Card>
           </Col>
@@ -568,18 +638,30 @@ function MusicManager() {
           </Card>
         )}
 
-        {/* Music List */}
+        {/* Search & Music List */}
         <Card
           title={
             <>
               <SoundOutlined className="mr-2" />
-              Danh sách nhạc ({totalFiles} bài)
+              Danh sách nhạc ({filteredMusicList.length}/{totalFiles} bài)
             </>
+          }
+          extra={
+            <Search
+              placeholder="Tìm kiếm có dấu/không dấu: tên bài, nghệ sĩ, album..."
+              allowClear
+              enterButton={<SearchOutlined />}
+              size="large"
+              style={{ width: 320 }}
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              onSearch={handleSearch}
+            />
           }
         >
           <Table
             columns={columns}
-            dataSource={musicList}
+            dataSource={filteredMusicList}
             rowKey="id"
             loading={loading}
             pagination={{
@@ -594,9 +676,15 @@ function MusicManager() {
               emptyText: (
                 <div className="text-center py-8">
                   <SoundOutlined className="text-4xl text-gray-300 mb-4" />
-                  <div className="text-gray-500">Chưa có file nhạc nào.</div>
+                  <div className="text-gray-500">
+                    {searchTerm.trim()
+                      ? `Không tìm thấy bài hát nào với từ khóa "${searchTerm}"`
+                      : "Chưa có file nhạc nào."}
+                  </div>
                   <div className="text-sm text-gray-400 mt-2">
-                    Hãy upload file hoặc scan thư mục để bắt đầu!
+                    {searchTerm.trim()
+                      ? "Hãy thử từ khóa khác hoặc xóa bộ lọc để xem tất cả bài hát."
+                      : "Hãy upload file hoặc scan thư mục để bắt đầu!"}
                   </div>
                 </div>
               ),
