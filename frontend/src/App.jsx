@@ -235,7 +235,7 @@ function MusicManager() {
     }
   };
 
-  // Xóa file
+  // Xoá file
   const handleDelete = async (id) => {
     try {
       await api.delete(`/music/${id}`);
@@ -252,6 +252,7 @@ function MusicManager() {
       }
 
       // Refresh danh sách
+      await handleScan();
       await fetchMusicList();
     } catch (error) {
       console.error("Lỗi xóa file:", error);
