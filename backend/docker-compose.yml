@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  music-manager:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      # Sử dụng external storage path
+      - UPLOAD_DIR=/music-storage
+      - PORT=3001
+    volumes:
+      # Mount external directory vào container
+      # Thay đổi đường dẫn bên trái theo hệ thống của bạn
+      - /home/user/music-storage:/music-storage
+      # Hoặc trên Windows:
+      # - D:\Music\Storage:/music-storage
+
+      # Mount source code for development
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: npm run dev
+    restart: unless-stopped
+
+volumes:
+  # Optional: Sử dụng named volume thay vì bind mount
+  music_storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/user/music-storage
+
+# Network (optional)
+networks:
+  music-net:
+    driver: bridge

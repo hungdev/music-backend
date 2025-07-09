@@ -1,3 +1,5 @@
+require("dotenv").config(); // Load environment variables
+
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
@@ -9,32 +11,74 @@ const crypto = require("crypto");
 const { normalizeFilename } = require("./utils");
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Tạo thư mục uploads và covers nếu chưa tồn tại
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-const COVERS_DIR = path.join(__dirname, "uploads", "covers");
-const MUSIC_LIST_FILE = path.join(__dirname, "music-list.json");
+// Cấu hình đường dẫn upload linh hoạt
+const UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(__dirname, "uploads");
 
-if (!fsSync.existsSync(UPLOAD_DIR)) {
-  fsSync.mkdirSync(UPLOAD_DIR, { recursive: true });
+const COVERS_DIR = path.join(UPLOAD_DIR, "covers");
+const MUSIC_LIST_FILE = path.join(UPLOAD_DIR, "music-list.json");
+
+// Log thông tin đường dẫn
+console.log("=== STORAGE CONFIGURATION ===");
+console.log(`Upload Directory: ${UPLOAD_DIR}`);
+console.log(`Covers Directory: ${COVERS_DIR}`);
+console.log(`Music List File: ${MUSIC_LIST_FILE}`);
+console.log(`Is External Storage: ${!UPLOAD_DIR.includes(__dirname)}`);
+console.log("===============================");
+
+// Hàm tạo thư mục an toàn
+async function ensureDirectoryExists(dirPath) {
+  try {
+    await fs.access(dirPath);
+    console.log(`✓ Directory exists: ${dirPath}`);
+  } catch (error) {
+    try {
+      await fs.mkdir(dirPath, { recursive: true });
+      console.log(`✓ Created directory: ${dirPath}`);
+    } catch (mkdirError) {
+      console.error(`✗ Failed to create directory ${dirPath}:`, mkdirError.message);
+      throw mkdirError;
+    }
+  }
 }
 
-if (!fsSync.existsSync(COVERS_DIR)) {
-  fsSync.mkdirSync(COVERS_DIR, { recursive: true });
+// Khởi tạo thư mục upload và covers
+async function initializeDirectories() {
+  try {
+    await ensureDirectoryExists(UPLOAD_DIR);
+    await ensureDirectoryExists(COVERS_DIR);
+
+    // Test write permission
+    const testFile = path.join(UPLOAD_DIR, ".write-test");
+    await fs.writeFile(testFile, "test");
+    await fs.unlink(testFile);
+
+    console.log("✓ All directories initialized successfully");
+    console.log("✓ Write permission confirmed");
+  } catch (error) {
+    console.error("✗ Failed to initialize directories:", error.message);
+    console.error("Please check if the upload path exists and is writable.");
+    process.exit(1);
+  }
 }
+
+// Chạy khởi tạo thư mục
+initializeDirectories();
 
 // Serve static files từ thư mục uploads
 app.use(
   "/uploads",
   express.static(UPLOAD_DIR, {
-    setHeaders: (res, path) => {
+    setHeaders: (res, filePath) => {
       // Set proper headers cho audio files
-      if (path.match(/\.(mp3|wav|flac|aac|ogg|webm|m4a)$/i)) {
+      if (filePath.match(/\.(mp3|wav|flac|aac|ogg|webm|m4a)$/i)) {
         res.set({
           "Content-Type": "audio/mpeg",
           "Accept-Ranges": "bytes",
@@ -42,7 +86,7 @@ app.use(
         });
       }
       // Set proper headers cho image files
-      else if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      else if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         res.set({
           "Content-Type": "image/*",
           "Cache-Control": "public, max-age=86400", // Cache ảnh lâu hơn
@@ -103,6 +147,19 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB
   },
 });
+
+// Utility function để format bytes
+function formatBytes(bytes, decimals = 2) {
+  if (bytes === 0) return "0 Bytes";
+
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+}
 
 // Hàm tạo URLs cho file
 function generateFileUrls(filename, baseUrl = `http://localhost:${PORT}`) {
@@ -232,6 +289,82 @@ async function extractMetadata(filePath, req = null) {
 
 // API Routes
 
+// 0. API để lấy thông tin storage
+app.get("/api/storage/info", async (req, res) => {
+  try {
+    const stats = await fs.stat(UPLOAD_DIR);
+
+    // Đếm số file trong thư mục
+    const files = await fs.readdir(UPLOAD_DIR);
+    const musicFiles = files.filter((file) => file.match(/\.(mp3|wav|flac|aac|ogg|webm|m4a)$/i));
+
+    // Đếm số cover images
+    let coverFiles = 0;
+    try {
+      const coversList = await fs.readdir(COVERS_DIR);
+      coverFiles = coversList.filter((file) => file.match(/\.(jpg|jpeg|png|gif|webp)$/i)).length;
+    } catch (err) {
+      // Covers directory might not exist yet
+    }
+
+    // Tính tổng dung lượng
+    let totalSize = 0;
+    for (const file of files) {
+      try {
+        const filePath = path.join(UPLOAD_DIR, file);
+        const fileStat = await fs.stat(filePath);
+        if (fileStat.isFile()) {
+          totalSize += fileStat.size;
+        }
+      } catch (err) {
+        // Ignore errors for individual files
+      }
+    }
+
+    // Kiểm tra xem có file music-list.json không
+    let hasDatabase = false;
+    let lastScan = null;
+    try {
+      await fs.access(MUSIC_LIST_FILE);
+      hasDatabase = true;
+      const dbContent = await fs.readFile(MUSIC_LIST_FILE, "utf8");
+      const dbData = JSON.parse(dbContent);
+      lastScan = dbData.lastScan;
+    } catch (err) {
+      // Database file doesn't exist
+    }
+
+    res.json({
+      uploadDirectory: UPLOAD_DIR,
+      coversDirectory: COVERS_DIR,
+      musicListFile: MUSIC_LIST_FILE,
+      totalFiles: files.length,
+      musicFiles: musicFiles.length,
+      coverFiles: coverFiles,
+      totalSize: totalSize,
+      totalSizeFormatted: formatBytes(totalSize),
+      isExternal: !UPLOAD_DIR.includes(__dirname),
+      writable: true, // Nếu đến được đây thì có thể ghi
+      hasDatabase: hasDatabase,
+      lastScan: lastScan,
+      serverInfo: {
+        port: PORT,
+        nodeEnv: process.env.NODE_ENV || "development",
+        version: require("./package.json").version,
+      },
+    });
+  } catch (error) {
+    console.error("Lỗi lấy thông tin storage:", error);
+    res.status(500).json({
+      error: "Không thể truy cập thư mục upload",
+      uploadDirectory: UPLOAD_DIR,
+      isExternal: !UPLOAD_DIR.includes(__dirname),
+      writable: false,
+      details: error.message,
+    });
+  }
+});
+
 // 1. API Upload file (hỗ trợ nhiều file)
 app.post("/api/upload", upload.array("music", 20), async (req, res) => {
   try {
@@ -242,9 +375,12 @@ app.post("/api/upload", upload.array("music", 20), async (req, res) => {
     const uploadedFiles = [];
     const errors = [];
 
+    console.log(`\n🎵 Processing ${req.files.length} uploaded files...`);
+
     // Xử lý từng file
     for (const file of req.files) {
       try {
+        console.log(`📄 Processing: ${file.originalname}`);
         const metadata = await extractMetadata(file.path, req);
         uploadedFiles.push({
           originalName: file.originalname,
@@ -253,14 +389,19 @@ app.post("/api/upload", upload.array("music", 20), async (req, res) => {
           path: file.path,
           metadata: metadata,
         });
+        console.log(`✓ Processed: ${file.originalname}`);
       } catch (error) {
-        console.error(`Lỗi xử lý file ${file.originalname}:`, error);
+        console.error(`✗ Failed to process ${file.originalname}:`, error);
         errors.push({
           filename: file.originalname,
           error: error.message,
         });
       }
     }
+
+    console.log(
+      `✓ Upload completed: ${uploadedFiles.length}/${req.files.length} files successful\n`
+    );
 
     res.json({
       message: `Upload thành công ${uploadedFiles.length}/${req.files.length} file!`,
@@ -271,32 +412,34 @@ app.post("/api/upload", upload.array("music", 20), async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi upload:", error);
-    res.status(500).json({ error: "Lỗi khi upload file" });
+    res.status(500).json({ error: "Lỗi khi upload file", details: error.message });
   }
 });
 
 // 2. API scan folder và tạo file JSON
 app.post("/api/scan", async (req, res) => {
   try {
-    console.log("Bắt đầu scan thư mục:", UPLOAD_DIR);
+    console.log("🔍 Starting folder scan:", UPLOAD_DIR);
 
     const files = await fs.readdir(UPLOAD_DIR);
     const musicFiles = files.filter((file) => file.match(/\.(mp3|wav|flac|aac|ogg|webm|m4a)$/i));
 
-    console.log(`Tìm thấy ${musicFiles.length} file nhạc`);
+    console.log(`📁 Found ${musicFiles.length} music files`);
 
     const musicList = [];
+    let processed = 0;
 
     for (const file of musicFiles) {
       const filePath = path.join(UPLOAD_DIR, file);
       try {
+        console.log(`📄 Scanning ${++processed}/${musicFiles.length}: ${file}`);
         const metadata = await extractMetadata(filePath, req);
         musicList.push({
           id: Buffer.from(file).toString("base64"), // Tạo ID unique
           ...metadata,
         });
       } catch (error) {
-        console.error(`Lỗi xử lý file ${file}:`, error);
+        console.error(`✗ Error processing file ${file}:`, error);
       }
     }
 
@@ -304,30 +447,33 @@ app.post("/api/scan", async (req, res) => {
     musicList.sort((a, b) => a.filename.localeCompare(b.filename));
 
     // Lưu vào file JSON
-    await fs.writeFile(
-      MUSIC_LIST_FILE,
-      JSON.stringify(
-        {
-          lastScan: new Date().toISOString(),
-          totalFiles: musicList.length,
-          files: musicList,
-        },
-        null,
-        2
-      )
-    );
+    const dbData = {
+      lastScan: new Date().toISOString(),
+      totalFiles: musicList.length,
+      scanInfo: {
+        uploadDirectory: UPLOAD_DIR,
+        totalFilesInDirectory: files.length,
+        musicFilesFound: musicFiles.length,
+        successfullyProcessed: musicList.length,
+        errors: musicFiles.length - musicList.length,
+      },
+      files: musicList,
+    };
 
-    console.log("Scan hoàn tất, đã lưu vào file JSON");
+    await fs.writeFile(MUSIC_LIST_FILE, JSON.stringify(dbData, null, 2));
+
+    console.log("✓ Scan completed, database saved");
 
     res.json({
       message: "Scan thành công!",
       totalFiles: musicList.length,
       lastScan: new Date().toISOString(),
+      scanInfo: dbData.scanInfo,
       files: musicList,
     });
   } catch (error) {
     console.error("Lỗi scan:", error);
-    res.status(500).json({ error: "Lỗi khi scan thư mục" });
+    res.status(500).json({ error: "Lỗi khi scan thư mục", details: error.message });
   }
 });
 
@@ -341,6 +487,7 @@ app.get("/api/music", async (req, res) => {
         lastScan: null,
         totalFiles: 0,
         files: [],
+        needsScan: true,
       });
     }
 
@@ -363,10 +510,17 @@ app.get("/api/music", async (req, res) => {
       });
     }
 
+    // Thêm thông tin về storage
+    musicData.needsScan = false;
+    musicData.storageInfo = {
+      uploadDirectory: UPLOAD_DIR,
+      isExternal: !UPLOAD_DIR.includes(__dirname),
+    };
+
     res.json(musicData);
   } catch (error) {
     console.error("Lỗi đọc danh sách nhạc:", error);
-    res.status(500).json({ error: "Lỗi khi đọc danh sách nhạc" });
+    res.status(500).json({ error: "Lỗi khi đọc danh sách nhạc", details: error.message });
   }
 });
 
@@ -376,6 +530,8 @@ app.delete("/api/music/:id", async (req, res) => {
     const { id } = req.params;
     const filename = Buffer.from(id, "base64").toString();
     const filePath = path.join(UPLOAD_DIR, filename);
+
+    console.log(`🗑️  Deleting file: ${filename}`);
 
     // Kiểm tra file có tồn tại không
     if (!fsSync.existsSync(filePath)) {
@@ -391,22 +547,26 @@ app.delete("/api/music/:id", async (req, res) => {
         const coverPath = path.join(COVERS_DIR, `${hash}${ext}`);
         if (fsSync.existsSync(coverPath)) {
           await fs.unlink(coverPath);
-          console.log(`Đã xóa album art: ${hash}${ext}`);
+          console.log(`✓ Deleted album art: ${hash}${ext}`);
           break;
         }
       }
     } catch (coverError) {
-      console.error("Lỗi xóa album art:", coverError);
+      console.error("⚠️  Error deleting album art:", coverError);
       // Không throw error vì việc xóa album art không quan trọng bằng việc xóa file nhạc
     }
 
     // Xóa file nhạc
     await fs.unlink(filePath);
+    console.log(`✓ Deleted music file: ${filename}`);
 
-    res.json({ message: "Xóa file thành công" });
+    res.json({
+      message: "Xóa file thành công",
+      deletedFile: filename,
+    });
   } catch (error) {
     console.error("Lỗi xóa file:", error);
-    res.status(500).json({ error: "Lỗi khi xóa file" });
+    res.status(500).json({ error: "Lỗi khi xóa file", details: error.message });
   }
 });
 
@@ -449,7 +609,7 @@ app.get("/api/stream/:id", (req, res) => {
     }
   } catch (error) {
     console.error("Lỗi stream file:", error);
-    res.status(500).json({ error: "Lỗi khi stream file" });
+    res.status(500).json({ error: "Lỗi khi stream file", details: error.message });
   }
 });
 
@@ -476,7 +636,7 @@ app.get("/api/download/:id", (req, res) => {
     fsSync.createReadStream(filePath).pipe(res);
   } catch (error) {
     console.error("Lỗi download file:", error);
-    res.status(500).json({ error: "Lỗi khi download file" });
+    res.status(500).json({ error: "Lỗi khi download file", details: error.message });
   }
 });
 
@@ -499,26 +659,119 @@ app.get("/api/music/info/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi lấy thông tin file:", error);
-    res.status(500).json({ error: "Lỗi khi lấy thông tin file" });
+    res.status(500).json({ error: "Lỗi khi lấy thông tin file", details: error.message });
   }
+});
+
+// 8. API Health Check
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
+    storage: {
+      uploadDir: UPLOAD_DIR,
+      isExternal: !UPLOAD_DIR.includes(__dirname),
+      accessible: fsSync.existsSync(UPLOAD_DIR),
+    },
+  });
+});
+
+// 9. API Root endpoint
+app.get("/", (req, res) => {
+  res.json({
+    name: "Music Manager Backend",
+    version: require("./package.json").version,
+    description: "Backend API for Music Manager application",
+    endpoints: {
+      health: "/api/health",
+      storage: "/api/storage/info",
+      upload: "POST /api/upload",
+      scan: "POST /api/scan",
+      music: "/api/music",
+      stream: "/api/stream/:id",
+      download: "/api/download/:id",
+      delete: "DELETE /api/music/:id",
+      info: "/api/music/info/:id",
+    },
+    storage: {
+      uploadDirectory: UPLOAD_DIR,
+      isExternal: !UPLOAD_DIR.includes(__dirname),
+    },
+  });
 });
 
 // Error handling middleware
 app.use((error, req, res, next) => {
+  console.error("Error occurred:", error);
+
   if (error instanceof multer.MulterError) {
     if (error.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ error: "File quá lớn (tối đa 100MB)" });
+      return res.status(400).json({
+        error: "File quá lớn (tối đa 100MB)",
+        code: "FILE_TOO_LARGE",
+        maxSize: "100MB",
+      });
+    }
+    if (error.code === "LIMIT_FILE_COUNT") {
+      return res.status(400).json({
+        error: "Quá nhiều file (tối đa 20 file)",
+        code: "TOO_MANY_FILES",
+        maxCount: 20,
+      });
     }
   }
-  res.status(500).json({ error: error.message });
+
+  res.status(500).json({
+    error: error.message,
+    code: "INTERNAL_SERVER_ERROR",
+  });
 });
 
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Endpoint not found",
+    path: req.path,
+    method: req.method,
+    availableEndpoints: [
+      "GET /",
+      "GET /api/health",
+      "GET /api/storage/info",
+      "POST /api/upload",
+      "POST /api/scan",
+      "GET /api/music",
+      "GET /api/stream/:id",
+      "GET /api/download/:id",
+      "DELETE /api/music/:id",
+      "GET /api/music/info/:id",
+    ],
+  });
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("\n🛑 SIGTERM received, shutting down gracefully...");
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("\n🛑 SIGINT received, shutting down gracefully...");
+  process.exit(0);
+});
+
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server đang chạy tại http://localhost:${PORT}`);
-  console.log(`Thư mục upload: ${UPLOAD_DIR}`);
-  console.log(`Thư mục covers: ${COVERS_DIR}`);
-  console.log(`Static files served at: http://localhost:${PORT}/uploads/`);
-  console.log(`Cover images served at: http://localhost:${PORT}/uploads/covers/`);
+  console.log(`\n🎵 Music Manager Server Started!`);
+  console.log(`=================================`);
+  console.log(`🌐 Server URL: http://localhost:${PORT}`);
+  console.log(`📁 Upload Dir: ${UPLOAD_DIR}`);
+  console.log(`🖼️  Covers Dir: ${COVERS_DIR}`);
+  console.log(`📊 Storage API: http://localhost:${PORT}/api/storage/info`);
+  console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
+  console.log(`📖 API Docs: http://localhost:${PORT}/`);
+  console.log(`🎸 Ready to rock! 🎶\n`);
 });
 
 module.exports = app;
