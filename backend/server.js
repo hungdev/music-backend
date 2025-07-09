@@ -11,11 +11,13 @@ const crypto = require("crypto");
 const { normalizeFilename } = require("./utils");
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3666;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+console.log("UPLOAD_DIR", process.env.UPLOAD_DIR);
 
 // Cấu hình đường dẫn upload linh hoạt
 const UPLOAD_DIR = process.env.UPLOAD_DIR
