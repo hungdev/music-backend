@@ -4,11 +4,11 @@ services:
   music-manager:
     build: .
     ports:
-      - "3001:3001"
+      - "3666:3666"
     environment:
       # Sử dụng external storage path
       - UPLOAD_DIR=/music-storage
-      - PORT=3001
+      - PORT=3666
     volumes:
       # Mount external directory vào container
       # Thay đổi đường dẫn bên trái theo hệ thống của bạn
