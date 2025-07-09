@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  frontend:
+    build: .
+    container_name: music-frontend
+    ports:
+      - "8012:5173" # Thay đổi port bên trái theo ý muốn
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - VITE_BASE_URL=http://localhost:3666
+      - NODE_ENV=development
+    restart: unless-stopped
+    networks:
+      - music-network
+
+networks:
+  music-network:
+    driver: bridge
