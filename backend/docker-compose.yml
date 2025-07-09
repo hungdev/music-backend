@@ -12,7 +12,7 @@ services:
     volumes:
       # Mount external directory vào container
       # Thay đổi đường dẫn bên trái theo hệ thống của bạn
-      - /home/user/music-storage:/music-storage
+      - /mnt/nvme0n1p1/music:/music-storage
       # Hoặc trên Windows:
       # - D:\Music\Storage:/music-storage
 
@@ -30,7 +30,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /home/user/music-storage
+      device: /mnt/nvme0n1p1/music
 
 # Network (optional)
 networks:
