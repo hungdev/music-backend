@@ -32,5 +32,8 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    server: {
+      allowedHosts: ["music.hungvu.net"],
+    },
   };
 });
