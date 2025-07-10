@@ -526,7 +526,7 @@ const VibesMusicPlayer = () => {
           <button
             onClick={toggleRepeat}
             disabled={loading || songs.length === 0}
-            className={`absolute right-0 top-1/2 -translate-y-1/2 p-3 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`absolute right-0 top-1/2 -translate-y-1/2 p-3 pr-0 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
               isRepeating
                 ? "bg-blue-100 hover:bg-blue-200 text-blue-600"
                 : "hover:bg-gray-100 text-gray-700"
