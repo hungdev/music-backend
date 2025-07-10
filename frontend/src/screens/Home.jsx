@@ -46,7 +46,7 @@ const VibesMusicPlayer = () => {
           track: file.track,
         }));
 
-        setSongs(mappedSongs);
+        setSongs(mappedSongs?.reverse());
         setError(null);
         console.log("Songs loaded successfully:", mappedSongs);
       } catch (err) {
