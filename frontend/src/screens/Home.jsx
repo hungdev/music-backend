@@ -8,6 +8,7 @@ const VibesMusicPlayer = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(240); // 4 minutes default
   const [isDragging, setIsDragging] = useState(false);
+  const [isRepeating, setIsRepeating] = useState(false); // New: Repeat mode
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -75,6 +76,7 @@ const VibesMusicPlayer = () => {
 
     fetchSongs();
   }, []);
+
   // Helper function to generate emoji for songs
   const getEmojiForSong = (title, index) => {
     const emojis = ["🎵", "🎶", "🎤", "🎧", "🎼", "🎹", "🎸", "🥁", "🎺", "🎷"];
@@ -106,7 +108,26 @@ const VibesMusicPlayer = () => {
     </svg>
   );
 
+  // New: Repeat Icon
+  const RepeatIcon = ({ isActive }) => (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={`w-8 h-8 transition-colors ${
+        isActive ? "text-blue-600" : "text-gray-700 hover:text-gray-900"
+      }`}
+    >
+      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+      {isActive && <circle cx="12" cy="12" r="2" fill="currentColor" />}
+    </svg>
+  );
+
   const currentSong = songs[currentSongIndex] || null;
+
+  // New: Toggle repeat mode
+  const toggleRepeat = () => {
+    setIsRepeating((prev) => !prev);
+  };
 
   // Audio event handlers
   useEffect(() => {
@@ -125,7 +146,18 @@ const VibesMusicPlayer = () => {
 
     const handleEnded = () => {
       setIsPlaying(false);
-      nextSong();
+
+      // New: Check repeat mode
+      if (isRepeating) {
+        // Restart current song
+        audio.currentTime = 0;
+        setCurrentTime(0);
+        audio.play();
+        setIsPlaying(true);
+      } else {
+        // Move to next song
+        nextSong();
+      }
     };
 
     const handleCanPlay = () => {
@@ -145,7 +177,7 @@ const VibesMusicPlayer = () => {
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("canplay", handleCanPlay);
     };
-  }, [currentSongIndex, isPlaying, isDragging, currentSong]);
+  }, [currentSongIndex, isPlaying, isDragging, currentSong, isRepeating]); // Added isRepeating dependency
 
   // Load new song when index changes
   useEffect(() => {
@@ -383,10 +415,15 @@ const VibesMusicPlayer = () => {
               </div>
             ) : currentSong ? (
               <div className="w-full relative">
-                {/* Back arrow indicator */}
-                {/* <div className="text-center mb-8">
-                  <div className="text-gray-600 text-sm">← {currentSong.title}</div>
-                </div> */}
+                {/* Repeat indicator */}
+                {isRepeating && (
+                  <div className="text-center mb-4">
+                    <div className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                      <RepeatIcon isActive={true} />
+                      <span className="ml-2">Đang lặp lại</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Album Cover & Song Info */}
                 <div className="text-center max-w-md mx-auto">
@@ -480,6 +517,19 @@ const VibesMusicPlayer = () => {
             className="p-3 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <NextIcon />
+          </button>
+          {/* Repeat Button */}
+          <button
+            onClick={toggleRepeat}
+            disabled={loading || songs.length === 0}
+            className={`p-3 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+              isRepeating
+                ? "bg-blue-100 hover:bg-blue-200 text-blue-600"
+                : "hover:bg-gray-100 text-gray-700"
+            }`}
+            title={isRepeating ? "Tắt lặp lại" : "Bật lặp lại"}
+          >
+            <RepeatIcon isActive={isRepeating} />
           </button>
         </div>
       </div>
