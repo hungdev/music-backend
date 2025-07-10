@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
-
 const VibesMusicPlayer = () => {
   const [showLibrary, setShowLibrary] = useState(false);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
@@ -156,7 +155,6 @@ const VibesMusicPlayer = () => {
       audio.src = currentSong.url;
       audio.load();
       setCurrentTime(0);
-      // Use song duration from API if available
       if (currentSong.duration) {
         setDuration(currentSong.duration);
       }
@@ -225,14 +223,14 @@ const VibesMusicPlayer = () => {
     if (songs.length === 0) return;
     setCurrentSongIndex((prev) => (prev + 1) % songs.length);
     setCurrentTime(0);
-    setIsPlaying(true); // Auto play next song
+    setIsPlaying(true);
   };
 
   const prevSong = () => {
     if (songs.length === 0) return;
     setCurrentSongIndex((prev) => (prev - 1 + songs.length) % songs.length);
     setCurrentTime(0);
-    setIsPlaying(true); // Auto play previous song
+    setIsPlaying(true);
   };
 
   const togglePlay = async () => {
@@ -257,7 +255,7 @@ const VibesMusicPlayer = () => {
     if (songs.length === 0) return;
     setCurrentSongIndex(index);
     setCurrentTime(0);
-    setIsPlaying(true); // Auto play selected song
+    setIsPlaying(true);
     setShowLibrary(false);
   };
 
@@ -279,7 +277,8 @@ const VibesMusicPlayer = () => {
         </button>
       </header>
 
-      <div className="flex-1 flex relative">
+      {/* Main Container - Fixed Height with Bottom Padding for Controls */}
+      <div className="flex-1 flex relative" style={{ paddingBottom: "160px" }}>
         {/* Sidebar Library */}
         <div
           className={`fixed top-0 left-0 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-20 ${
@@ -329,7 +328,6 @@ const VibesMusicPlayer = () => {
                       alt={`${song.title} cover`}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        // Fallback to emoji if image fails
                         e.target.style.display = "none";
                         e.target.nextSibling.style.display = "flex";
                       }}
@@ -360,7 +358,7 @@ const VibesMusicPlayer = () => {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 flex flex-col items-center justify-center p-8 relative">
+        <main className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-auto">
           {loading ? (
             <div className="text-center">
               <div className="text-2xl mb-4">🎵</div>
@@ -429,8 +427,8 @@ const VibesMusicPlayer = () => {
         </main>
       </div>
 
-      {/* Player Controls */}
-      <div className="bg-white border-t p-8 pb-6">
+      {/* Player Controls - Fixed at Bottom */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-8 pb-6 z-30">
         {/* Progress Bar */}
         <div className="max-w-4xl mx-auto mb-6">
           <div className="flex justify-between text-sm text-gray-600 mb-2">
