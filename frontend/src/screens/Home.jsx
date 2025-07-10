@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
+
 const VibesMusicPlayer = () => {
   const [showLibrary, setShowLibrary] = useState(false);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
@@ -8,13 +9,12 @@ const VibesMusicPlayer = () => {
   const [duration, setDuration] = useState(240); // 4 minutes default
   const [isDragging, setIsDragging] = useState(false);
   const [songs, setSongs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const progressRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Fetch songs from API
   useEffect(() => {
     const fetchSongs = async () => {
       try {
@@ -75,7 +75,6 @@ const VibesMusicPlayer = () => {
 
     fetchSongs();
   }, []);
-
   // Helper function to generate emoji for songs
   const getEmojiForSong = (title, index) => {
     const emojis = ["🎵", "🎶", "🎤", "🎧", "🎼", "🎹", "🎸", "🥁", "🎺", "🎷"];
@@ -277,8 +276,8 @@ const VibesMusicPlayer = () => {
         </button>
       </header>
 
-      {/* Main Container - Fixed Height with Bottom Padding for Controls */}
-      <div className="flex-1 flex relative" style={{ paddingBottom: "160px" }}>
+      {/* Main Container - Full Height with Scrollable Content */}
+      <div className="flex-1 flex relative">
         {/* Sidebar Library */}
         <div
           className={`fixed top-0 left-0 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-20 ${
@@ -297,7 +296,7 @@ const VibesMusicPlayer = () => {
               </button>
             </div>
           </div>
-          <div className="overflow-y-auto h-full pt-0 pb-32">
+          <div className="overflow-y-auto h-[calc(100vh-240px)]">
             {loading ? (
               <div className="p-4 text-center text-gray-600">
                 <div className="text-lg mb-2">🎵</div>
@@ -357,73 +356,75 @@ const VibesMusicPlayer = () => {
           <div className="fixed inset-0 z-10" onClick={() => setShowLibrary(false)} />
         )}
 
-        {/* Main Content */}
-        <main className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-auto">
-          {loading ? (
-            <div className="text-center">
-              <div className="text-2xl mb-4">🎵</div>
-              <div className="text-xl text-gray-600">Đang tải nhạc...</div>
-            </div>
-          ) : error ? (
-            <div className="text-center">
-              <div className="text-2xl mb-4">⚠️</div>
-              <div className="text-xl text-gray-600 mb-2">Lỗi kết nối API</div>
-              <div className="text-sm text-gray-500">{error}</div>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
-              >
-                Thử lại
-              </button>
-            </div>
-          ) : songs.length === 0 ? (
-            <div className="text-center">
-              <div className="text-2xl mb-4">🎼</div>
-              <div className="text-xl text-gray-600">Không có bài hát nào</div>
-            </div>
-          ) : currentSong ? (
-            <>
-              {/* Back arrow indicator */}
-              <div className="absolute top-8 left-1/2 transform -translate-x-1/2">
-                <div className="text-gray-600 text-sm">← {currentSong.title}</div>
+        {/* Main Content - Scrollable with bottom padding for controls */}
+        <main className="flex-1 overflow-y-auto h-[calc(100vh-80px)] pb-40">
+          <div className="flex flex-col items-center justify-center min-h-full p-8">
+            {loading ? (
+              <div className="text-center">
+                <div className="text-2xl mb-4">🎵</div>
+                <div className="text-xl text-gray-600">Đang tải nhạc...</div>
               </div>
-
-              {/* Album Cover & Song Info */}
-              <div className="text-center max-w-md mx-auto">
-                {/* Album Cover */}
-                <div className="mb-8 flex justify-center">
-                  <div className="relative w-80 h-80">
-                    <img
-                      src={currentSong.cover}
-                      alt={`${currentSong.title} cover`}
-                      className="w-full h-full object-cover rounded-2xl shadow-2xl"
-                      onLoad={() => console.log("Image loaded successfully")}
-                      onError={(e) => {
-                        console.log("Image failed to load, showing fallback");
-                        e.target.style.display = "none";
-                        const fallback = e.target.parentNode.querySelector(".fallback-cover");
-                        if (fallback) fallback.style.display = "flex";
-                      }}
-                    />
-                    {/* Fallback div */}
-                    <div
-                      className="fallback-cover absolute inset-0 w-full h-full bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl shadow-2xl flex items-center justify-center text-6xl text-white"
-                      style={{ display: "none" }}
-                    >
-                      {currentSong.image}
-                    </div>
-                  </div>
+            ) : error ? (
+              <div className="text-center">
+                <div className="text-2xl mb-4">⚠️</div>
+                <div className="text-xl text-gray-600 mb-2">Lỗi kết nối API</div>
+                <div className="text-sm text-gray-500">{error}</div>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-4 px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
+                >
+                  Thử lại
+                </button>
+              </div>
+            ) : songs.length === 0 ? (
+              <div className="text-center">
+                <div className="text-2xl mb-4">🎼</div>
+                <div className="text-xl text-gray-600">Không có bài hát nào</div>
+              </div>
+            ) : currentSong ? (
+              <div className="w-full relative">
+                {/* Back arrow indicator */}
+                <div className="text-center mb-8">
+                  <div className="text-gray-600 text-sm">← {currentSong.title}</div>
                 </div>
 
-                {/* Song Info */}
-                <h2 className="text-4xl font-bold text-gray-800 mb-4">{currentSong.title}</h2>
-                <p className="text-xl text-gray-600 mb-2">{currentSong.artist}</p>
-                {currentSong.album && (
-                  <p className="text-lg text-gray-500 mb-12">{currentSong.album}</p>
-                )}
+                {/* Album Cover & Song Info */}
+                <div className="text-center max-w-md mx-auto">
+                  {/* Album Cover */}
+                  <div className="mb-8 flex justify-center">
+                    <div className="relative w-80 h-80">
+                      <img
+                        src={currentSong.cover}
+                        alt={`${currentSong.title} cover`}
+                        className="w-full h-full object-cover rounded-2xl shadow-2xl"
+                        onLoad={() => console.log("Image loaded successfully")}
+                        onError={(e) => {
+                          console.log("Image failed to load, showing fallback");
+                          e.target.style.display = "none";
+                          const fallback = e.target.parentNode.querySelector(".fallback-cover");
+                          if (fallback) fallback.style.display = "flex";
+                        }}
+                      />
+                      {/* Fallback div */}
+                      <div
+                        className="fallback-cover absolute inset-0 w-full h-full bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl shadow-2xl flex items-center justify-center text-6xl text-white"
+                        style={{ display: "none" }}
+                      >
+                        {currentSong.image}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Song Info */}
+                  <h2 className="text-4xl font-bold text-gray-800 mb-4">{currentSong.title}</h2>
+                  <p className="text-xl text-gray-600 mb-2">{currentSong.artist}</p>
+                  {currentSong.album && (
+                    <p className="text-lg text-gray-500 mb-12">{currentSong.album}</p>
+                  )}
+                </div>
               </div>
-            </>
-          ) : null}
+            ) : null}
+          </div>
         </main>
       </div>
 
