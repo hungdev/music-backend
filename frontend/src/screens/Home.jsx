@@ -280,7 +280,7 @@ const VibesMusicPlayer = () => {
       <div className="flex-1 flex relative">
         {/* Sidebar Library */}
         <div
-          className={`fixed top-0 left-0 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-20 ${
+          className={`fixed top-0 left-0 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-40 ${
             showLibrary ? "translate-x-0" : "-translate-x-full"
           } w-80`}
         >
@@ -296,7 +296,7 @@ const VibesMusicPlayer = () => {
               </button>
             </div>
           </div>
-          <div className="overflow-y-auto h-[calc(100vh-240px)]">
+          <div className="overflow-y-auto h-full pb-20">
             {loading ? (
               <div className="p-4 text-center text-gray-600">
                 <div className="text-lg mb-2">🎵</div>
@@ -384,9 +384,9 @@ const VibesMusicPlayer = () => {
             ) : currentSong ? (
               <div className="w-full relative">
                 {/* Back arrow indicator */}
-                <div className="text-center mb-8">
+                {/* <div className="text-center mb-8">
                   <div className="text-gray-600 text-sm">← {currentSong.title}</div>
-                </div>
+                </div> */}
 
                 {/* Album Cover & Song Info */}
                 <div className="text-center max-w-md mx-auto">
