@@ -494,35 +494,39 @@ const VibesMusicPlayer = () => {
         </div>
 
         {/* Control Buttons */}
-        <div className="flex justify-center items-center space-x-8">
-          <button
-            onClick={prevSong}
-            disabled={loading || songs.length === 0}
-            className="p-3 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <PrevIcon />
-          </button>
+        <div className="relative max-w-4xl mx-auto">
+          {/* Center Controls */}
+          <div className="flex justify-center items-center space-x-8">
+            <button
+              onClick={prevSong}
+              disabled={loading || songs.length === 0}
+              className="p-3 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <PrevIcon />
+            </button>
 
-          <button
-            onClick={togglePlay}
-            disabled={loading || songs.length === 0 || !currentSong}
-            className="p-4 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isPlaying ? <PauseIcon /> : <PlayIcon />}
-          </button>
+            <button
+              onClick={togglePlay}
+              disabled={loading || songs.length === 0 || !currentSong}
+              className="p-4 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
 
-          <button
-            onClick={nextSong}
-            disabled={loading || songs.length === 0}
-            className="p-3 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <NextIcon />
-          </button>
-          {/* Repeat Button */}
+            <button
+              onClick={nextSong}
+              disabled={loading || songs.length === 0}
+              className="p-3 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <NextIcon />
+            </button>
+          </div>
+
+          {/* Repeat Button (Absolute Position) */}
           <button
             onClick={toggleRepeat}
             disabled={loading || songs.length === 0}
-            className={`p-3 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`absolute right-0 top-1/2 -translate-y-1/2 p-3 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
               isRepeating
                 ? "bg-blue-100 hover:bg-blue-200 text-blue-600"
                 : "hover:bg-gray-100 text-gray-700"
